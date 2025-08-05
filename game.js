@@ -9,7 +9,8 @@ import { SpectatorPawn } from './spectatorPawn.js'; // Import SpectatorPawn
 let globalOcean = null;
 let globalOceanGeometry = null;
 let globalOceanSegments = 64;
-let globalOceanTime = Math.random() * 1000;
+let globalOceanStartTime = Date.now(); // Absolute timestamp when ocean simulation began
+let globalOceanTime = 0; // Current ocean time (calculated from start time)
 let globalOceanWaveState = {
     amp: 1.0, // Simple wave amplitude
     speed: 1.0 // Simple wave speed
@@ -18,6 +19,7 @@ let globalOceanSize = 120;
 
 // Make ocean variables globally accessible for ship synchronization
 window.globalOceanTime = globalOceanTime;
+window.globalOceanStartTime = globalOceanStartTime;
 window.globalOceanWaveState = globalOceanWaveState;
 
 function createGlobalOcean(scene, size = 120, segments = 64) {
@@ -150,6 +152,16 @@ function initGame() {
             // Handle incoming player state updates from other clients
             this.network.callbacks.handlePlayerState = (peerId, state) => {
                 this.playerManager.updatePlayer(peerId, state);
+                
+                // Handle ocean synchronization from host
+                if (state.oceanSync && !this.network.isBase) {
+                    // Client receives ocean timing from host
+                    globalOceanStartTime = state.oceanSync.startTime;
+                    window.globalOceanStartTime = globalOceanStartTime;
+                    
+                    // Optional: Log sync events for debugging (remove in production)
+                    console.log('[OceanSync] Synchronized with host ocean timeline');
+                }
             };
             
             // Track when players join/leave the lobby to create/remove networked players
@@ -505,8 +517,9 @@ function initGame() {
 
         // --- Animate global ocean mesh (simple wireframe waves) ---
         if (globalOcean && globalOceanGeometry && playerPawn) {
-            // Simple ocean animation - just basic waves
-            globalOceanTime += deltaTime * 2.0; // Fixed wave speed
+            // Calculate ocean time from absolute start time (deterministic and sync-friendly)
+            const currentRealTime = Date.now();
+            globalOceanTime = (currentRealTime - globalOceanStartTime) / 1000.0 * 2.0; // Convert to seconds and apply speed multiplier
             
             // Center ocean on player
             globalOcean.position.x = playerPawn.position.x;
@@ -515,9 +528,10 @@ function initGame() {
             
             // Update window variables for ship synchronization
             window.globalOceanTime = globalOceanTime;
+            window.globalOceanStartTime = globalOceanStartTime;
             window.globalOceanWaveState = globalOceanWaveState;
             
-            // Simple wave animation
+            // Simple wave animation using deterministic time
             const pos = globalOceanGeometry.attributes.position;
             const seg = globalOceanSegments;
             const t = globalOceanTime;
@@ -532,7 +546,7 @@ function initGame() {
                     const x = (xi - seg / 2) * (size / seg) + px;
                     const z = (zi - seg / 2) * (size / seg) + pz;
                     
-                    // Simple waves
+                    // Simple waves using deterministic time input
                     let y = 0;
                     y += Math.sin(0.08 * x + t * 0.6) * 1.0;
                     y += Math.cos(0.07 * z + t * 0.4) * 0.8;
@@ -570,7 +584,12 @@ function initGame() {
                 y: playerPawn.shipModel.position.y,
                 z: playerPawn.shipModel.position.z
             } : null,
-            surgeActive: playerPawn.surgeActive || false
+            surgeActive: playerPawn.surgeActive || false,
+            // Ocean synchronization data (host authoritative)
+            oceanSync: gameNetworking.getNetworkInfo().isHost ? {
+                startTime: globalOceanStartTime,
+                currentTime: globalOceanTime
+            } : null
         };
         
         // Throttle network updates to avoid spam (send every ~100ms for stable performance)

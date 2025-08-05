@@ -43,10 +43,15 @@ function calculateOceanSurfaceNormal(x, z, sampleDistance = 0.1) {
     const vectorRight = new THREE.Vector3(sampleDistance, heightRight - heightCenter, 0);
     const vectorForward = new THREE.Vector3(0, heightForward - heightCenter, sampleDistance);
     
-    // Calculate normal using cross product
+    // Calculate normal using cross product (corrected order for upward normal)
     const normal = new THREE.Vector3();
-    normal.crossVectors(vectorRight, vectorForward);
+    normal.crossVectors(vectorForward, vectorRight); // Swapped order to get upward normal
     normal.normalize();
+    
+    // Ensure normal points upward (positive Y component)
+    if (normal.y < 0) {
+        normal.negate();
+    }
     
     return normal;
 }
@@ -119,7 +124,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
                 emissiveIntensity: 0.1
             });
             const simpleShip = new THREE.Mesh(simpleShipGeometry, simpleShipMaterial);
-            simpleShip.position.y = 0;
+            simpleShip.position.y = -0.25; // Match waterline position
             playerGroup.add(simpleShip);
             playerGroup.shipModel = simpleShip;
             console.log('Gray fallback ship created for networked player');
@@ -179,7 +184,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
                 emissiveIntensity: 0.05
             });
             const shipMesh = new THREE.Mesh(shipGeometry, shipMaterial);
-            shipMesh.position.y = 0; // Position on water surface
+            shipMesh.position.y = -0.25; // Match waterline position
             playerGroup.add(shipMesh);
             
             // Add sailing ship details

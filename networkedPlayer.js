@@ -1,52 +1,6 @@
 import * as THREE from 'https://cdn.skypack.dev/three@0.134.0';
 import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.134.0/examples/jsm/loaders/GLTFLoader.js';
 
-// Calculate ocean surface height at given x,z coordinates (matches game.js exactly)
-function calculateOceanHeight(x, z) {
-    // Access the global ocean variables from game.js
-    const globalOceanTime = window.globalOceanTime || 0;
-    const globalOceanWaveState = window.globalOceanWaveState || { 
-        amp: 1.0, 
-        speed: 1.0
-    };
-    
-    // Base ocean level (matches game.js)
-    let height = 20.0;
-    
-    // Apply the exact same simple wave calculation as in game.js
-    const t = globalOceanTime;
-    
-    // Simple waves - no storms, no complex multipliers
-    height += Math.sin(0.08 * x + t * 0.6) * 1.0;
-    height += Math.cos(0.07 * z + t * 0.4) * 0.8;
-    height += Math.sin(0.06 * (x + z) + t * 0.2) * 0.5;
-    
-    return height;
-}
-
-// Calculate ocean surface normal at given x,z coordinates by sampling nearby points
-function calculateOceanNormal(x, z) {
-    const delta = 0.5; // Sample distance for normal calculation
-    
-    // Sample ocean height at surrounding points
-    const heightCenter = calculateOceanHeight(x, z);
-    const heightLeft = calculateOceanHeight(x - delta, z);
-    const heightRight = calculateOceanHeight(x + delta, z);
-    const heightForward = calculateOceanHeight(x, z - delta);
-    const heightBack = calculateOceanHeight(x, z + delta);
-    
-    // Calculate tangent vectors
-    const tangentX = new THREE.Vector3(2 * delta, heightRight - heightLeft, 0);
-    const tangentZ = new THREE.Vector3(0, heightBack - heightForward, 2 * delta);
-    
-    // Calculate normal using cross product
-    const normal = new THREE.Vector3();
-    normal.crossVectors(tangentX, tangentZ);
-    normal.normalize();
-    
-    return normal;
-}
-
 export class NetworkedPlayer {
     constructor(peerId, scene, isHost = false) {
         this.peerId = peerId;
@@ -67,9 +21,9 @@ export class NetworkedPlayer {
                 // Removed GLTF loading success logging for performance
                 const shipModel = gltf.scene;
                 
-                // Configure the ship
+                // Configure the ship to match local player exactly
                 shipModel.scale.setScalar(1.0);
-                shipModel.position.y = 0;
+                shipModel.position.y = -0.25; // Match local player waterline position
                 
                 // Apply different colors based on role
                 this.applyShipStyling(shipModel, isHost);
@@ -187,7 +141,7 @@ export class NetworkedPlayer {
             emissiveIntensity: 0.2
         });
         const fallbackShip = new THREE.Mesh(fallbackGeometry, fallbackMaterial);
-        fallbackShip.position.y = 0;
+        fallbackShip.position.y = -0.25; // Match local player waterline position
         this.pawn.add(fallbackShip);
         this.pawn.shipModel = fallbackShip;
         
@@ -242,6 +196,8 @@ export class NetworkedPlayer {
                 );
                 this.interpolation.targetShipModelPosition.copy(this.interpolation.shipModelPosition);
                 this.pawn.shipModel.position.copy(this.interpolation.shipModelPosition);
+                // Force correct waterline position regardless of network data
+                this.pawn.shipModel.position.y = -0.25;
             }
             
             // Removed first update logging for performance
@@ -302,52 +258,15 @@ export class NetworkedPlayer {
             this.pawn.position.copy(this.interpolation.position);
             this.pawn.rotation.copy(this.interpolation.rotation);
             
-            // For networked players, also apply ocean normal following to their ship models
+            // Interpolate ship model position and rotation if ship model exists
             if (this.pawn.shipModel) {
-                // Calculate ocean surface normal at the networked player's position
-                const oceanNormal = calculateOceanNormal(this.pawn.position.x, this.pawn.position.z);
+                this.interpolation.shipModelPosition.lerp(this.interpolation.targetShipModelPosition, this.interpolation.shipModelLerpSpeed * deltaTime);
+                this.interpolateEuler(this.interpolation.shipModelRotation, this.interpolation.targetShipModelRotation, this.interpolation.shipModelLerpSpeed * deltaTime);
                 
-                // Apply ocean normal rotation to the ship model (similar to local player)
-                const shipUp = new THREE.Vector3(0, 1, 0);
-                const rotationAxis = new THREE.Vector3();
-                rotationAxis.crossVectors(shipUp, oceanNormal);
-                rotationAxis.normalize();
-                
-                const rotationAngle = Math.acos(Math.max(-1, Math.min(1, shipUp.dot(oceanNormal))));
-                
-                // Create the ocean normal rotation quaternion
-                const oceanRotation = new THREE.Quaternion();
-                if (rotationAngle > 0.001) {
-                    oceanRotation.setFromAxisAngle(rotationAxis, rotationAngle);
-                }
-                
-                // Get the networked player's yaw rotation from network data
-                const currentYaw = this.interpolation.rotation.y;
-                
-                // Create the yaw rotation quaternion
-                const yawRotation = new THREE.Quaternion();
-                yawRotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), currentYaw);
-                
-                // Combine rotations: first apply ocean normal, then yaw
-                const targetQuaternion = new THREE.Quaternion();
-                targetQuaternion.multiplyQuaternions(yawRotation, oceanRotation);
-                
-                // Apply smooth interpolation for networked ships too
-                const smoothingFactor = 0.15;
-                const currentQuaternion = this.pawn.shipModel.quaternion.clone();
-                currentQuaternion.slerp(targetQuaternion, smoothingFactor);
-                
-                // Apply the interpolated rotation to the networked ship
-                this.pawn.shipModel.quaternion.copy(currentQuaternion);
-                
-                // If we have ship model position data from network, use it, otherwise use ocean normal positioning
-                if (this.interpolation.targetShipModelPosition.length() > 0) {
-                    this.interpolation.shipModelPosition.lerp(this.interpolation.targetShipModelPosition, this.interpolation.shipModelLerpSpeed * deltaTime);
-                    this.pawn.shipModel.position.copy(this.interpolation.shipModelPosition);
-                } else {
-                    // Default ship model positioning
-                    this.pawn.shipModel.position.y = -0.25;
-                }
+                this.pawn.shipModel.position.copy(this.interpolation.shipModelPosition);
+                // Force correct waterline position regardless of network data
+                this.pawn.shipModel.position.y = -0.25;
+                this.pawn.shipModel.rotation.copy(this.interpolation.shipModelRotation);
             }
         }
     }
