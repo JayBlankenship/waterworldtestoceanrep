@@ -32,6 +32,25 @@ function calculateOceanHeight(x, z) {
     return height;
 }
 
+// Calculate ocean surface normal at given x,z coordinates for ship tilting
+function calculateOceanSurfaceNormal(x, z, sampleDistance = 0.1) {
+    // Sample ocean height at nearby points to calculate surface normal
+    const heightCenter = calculateOceanHeight(x, z);
+    const heightRight = calculateOceanHeight(x + sampleDistance, z);
+    const heightForward = calculateOceanHeight(x, z + sampleDistance);
+    
+    // Create vectors for the surface
+    const vectorRight = new THREE.Vector3(sampleDistance, heightRight - heightCenter, 0);
+    const vectorForward = new THREE.Vector3(0, heightForward - heightCenter, sampleDistance);
+    
+    // Calculate normal using cross product
+    const normal = new THREE.Vector3();
+    normal.crossVectors(vectorRight, vectorForward);
+    normal.normalize();
+    
+    return normal;
+}
+
 export function createShipPawn(isAI = false, color = null, showStar = false) {
     // Determine color: custom color takes priority, then AI/human default
     let shipColor;
@@ -218,12 +237,25 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
             this.position.y = minShipHeight;
         }
         
-        // Ship model stays completely fixed - NO movement, NO rotation, NO bobbing
+        // Ship model follows ocean surface normal for realistic tilting
         if (this.shipModel) {
-            // COMPLETELY FIXED position - exactly 1/4 hull underwater, no movement whatsoever
-            this.shipModel.position.y = -0.25; // Fixed waterline position - NEVER CHANGES
-            this.shipModel.rotation.x = 0;     // No pitch rotation - COMPLETELY FLAT
-            this.shipModel.rotation.z = 0;     // No roll rotation - COMPLETELY FLAT
+            // Calculate ocean surface normal at ship position
+            const surfaceNormal = calculateOceanSurfaceNormal(this.position.x, this.position.z);
+            
+            // Convert surface normal to rotation angles
+            // Calculate pitch (rotation around X axis) from the Z component of normal
+            const pitch = Math.asin(-surfaceNormal.z);
+            
+            // Calculate roll (rotation around Z axis) from the X component of normal
+            const roll = Math.asin(surfaceNormal.x);
+            
+            // Apply rotation to ship model with some damping for smoother movement
+            const dampingFactor = 0.1; // Adjust this to make rotation more or less responsive
+            
+            // Update ship model position and rotation
+            this.shipModel.position.y = -0.25; // Fixed waterline position
+            this.shipModel.rotation.x += (pitch - this.shipModel.rotation.x) * dampingFactor;
+            this.shipModel.rotation.z += (roll - this.shipModel.rotation.z) * dampingFactor;
         }
         
         // Handle movement based on sail mode and controls (only if parameters are provided)

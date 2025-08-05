@@ -59,6 +59,29 @@ function calculateOceanHeight(x, z) {
     return height;
 }
 
+// Calculate ocean surface normal at given x,z coordinates by sampling nearby points
+function calculateOceanNormal(x, z) {
+    const delta = 0.5; // Sample distance for normal calculation
+    
+    // Sample ocean height at surrounding points
+    const heightCenter = calculateOceanHeight(x, z);
+    const heightLeft = calculateOceanHeight(x - delta, z);
+    const heightRight = calculateOceanHeight(x + delta, z);
+    const heightForward = calculateOceanHeight(x, z - delta);
+    const heightBack = calculateOceanHeight(x, z + delta);
+    
+    // Calculate tangent vectors
+    const tangentX = new THREE.Vector3(2 * delta, heightRight - heightLeft, 0);
+    const tangentZ = new THREE.Vector3(0, heightBack - heightForward, 2 * delta);
+    
+    // Calculate normal using cross product
+    const normal = new THREE.Vector3();
+    normal.crossVectors(tangentX, tangentZ);
+    normal.normalize();
+    
+    return normal;
+}
+
 export function createShipPawn(isAI = false, color = null, showStar = false) {
     // Determine color: custom color takes priority, then AI/human default
     let shipColor;
@@ -245,43 +268,70 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
         // Ship follows the actual ocean surface (including waves and storms)
         this.position.y = oceanHeight + shipFloatHeight + movingIndicator;
         
-        // Calculate ocean surface slopes for realistic ship orientation
-        const sampleDistance = 2.0; // Distance to sample for slope calculation
-        
-        // Sample ocean heights around the ship to calculate surface normal
-        const frontHeight = calculateOceanHeight(
-            this.position.x + Math.sin(this.rotation.y) * sampleDistance,
-            this.position.z - Math.cos(this.rotation.y) * sampleDistance
-        );
-        const backHeight = calculateOceanHeight(
-            this.position.x - Math.sin(this.rotation.y) * sampleDistance,
-            this.position.z + Math.cos(this.rotation.y) * sampleDistance
-        );
-        const leftHeight = calculateOceanHeight(
-            this.position.x - Math.cos(this.rotation.y) * sampleDistance,
-            this.position.z - Math.sin(this.rotation.y) * sampleDistance
-        );
-        const rightHeight = calculateOceanHeight(
-            this.position.x + Math.cos(this.rotation.y) * sampleDistance,
-            this.position.z + Math.sin(this.rotation.y) * sampleDistance
-        );
-        
-        // Calculate pitch (front-back tilt) and roll (left-right tilt)
-        const pitch = Math.atan2(frontHeight - backHeight, sampleDistance * 2) * 0.8; // Reduce intensity
-        const roll = Math.atan2(rightHeight - leftHeight, sampleDistance * 2) * 0.8;
+        // Calculate ocean surface normal for ship tilting/leaning
+        const oceanNormal = calculateOceanNormal(this.position.x, this.position.z);
         
         // Always add subtle ship movement effects for realism (even during spectator mode)
         if (this.shipModel) {
-            // Apply ocean-based rotation with some additional bobbing
-            const time = Date.now() * 0.001;
-            const bobOffset = Math.sin(time * 0.8) * 0.1; // Reduced bobbing since we have wave following
-            const additionalRoll = Math.sin(time * 1.2) * 0.02; // Subtle additional movement
-            const additionalPitch = Math.sin(time * 0.6) * 0.01;
+            // Calculate subtle bobbing effect
+            const bobAnimTime = Date.now() * 0.001;
+            const bobOffset = Math.sin(bobAnimTime * 0.8) * 0.1; // Reduced bobbing since we have wave following
             
-            // Apply ocean-calculated rotations plus subtle additional movement
+            // Ship model now follows the ocean surface normal while preserving yaw rotation
+            // Keep the same Y offset for waterline with bobbing
             this.shipModel.position.y = bobOffset;
-            this.shipModel.rotation.z = roll + additionalRoll; // Roll based on ocean + subtle extra
-            this.shipModel.rotation.x = pitch + additionalPitch; // Pitch based on ocean + subtle extra
+            
+            // Calculate rotation to align with ocean surface normal
+            // First, get the ship's current yaw rotation (turning left/right)
+            const currentYaw = this.rotation.y;
+            
+            // Create target rotation that combines yaw with ocean surface normal
+            // Start with the ocean normal alignment
+            const shipUp = new THREE.Vector3(0, 1, 0);
+            const rotationAxis = new THREE.Vector3();
+            rotationAxis.crossVectors(shipUp, oceanNormal);
+            rotationAxis.normalize();
+            
+            const rotationAngle = Math.acos(Math.max(-1, Math.min(1, shipUp.dot(oceanNormal))));
+            
+            // Create the ocean normal rotation quaternion
+            const oceanRotation = new THREE.Quaternion();
+            if (rotationAngle > 0.001) {
+                oceanRotation.setFromAxisAngle(rotationAxis, rotationAngle);
+            }
+            
+            // Create the yaw rotation quaternion (ship turning)
+            const yawRotation = new THREE.Quaternion();
+            yawRotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), currentYaw);
+            
+            // Combine rotations: first apply ocean normal, then yaw
+            const targetQuaternion = new THREE.Quaternion();
+            targetQuaternion.multiplyQuaternions(yawRotation, oceanRotation);
+            
+            // Add subtle additional movement for realism
+            const rollAnimTime = Date.now() * 0.001;
+            const additionalRoll = Math.sin(rollAnimTime * 1.2) * 0.02; // Subtle additional movement
+            const additionalPitch = Math.sin(rollAnimTime * 0.6) * 0.01;
+            
+            // Create quaternions for the additional movements
+            const additionalRollQuat = new THREE.Quaternion();
+            additionalRollQuat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), additionalRoll);
+            
+            const additionalPitchQuat = new THREE.Quaternion();
+            additionalPitchQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), additionalPitch);
+            
+            // Combine all rotations
+            const finalQuaternion = new THREE.Quaternion();
+            finalQuaternion.multiplyQuaternions(targetQuaternion, additionalRollQuat);
+            finalQuaternion.multiplyQuaternions(finalQuaternion, additionalPitchQuat);
+            
+            // Apply smooth interpolation to avoid jerky movement
+            const smoothingFactor = 0.15; // Adjust this value to control how quickly ship tilts
+            const currentQuaternion = this.shipModel.quaternion.clone();
+            currentQuaternion.slerp(finalQuaternion, smoothingFactor);
+            
+            // Apply the interpolated rotation
+            this.shipModel.quaternion.copy(currentQuaternion);
         }
         
         // Handle movement based on sail mode and controls (only if parameters are provided)
