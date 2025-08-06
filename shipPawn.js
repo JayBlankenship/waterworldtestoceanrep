@@ -227,10 +227,21 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
     // Create a forward direction vector that stays with the ship
     playerGroup.forwardVector = new THREE.Vector3(0, 0, -1); // Forward is negative Z in Three.js
 
-    // Simplified update function for ship movement independent of ocean waves
+    // Simplified update function for ship movement following ocean surface
     playerGroup.update = function(deltaTime, animationTime, sailSpeed, moveState, camera) {
         // Calculate the actual ocean surface height at the ship's position
-        const oceanHeight = calculateOceanHeight(this.position.x, this.position.z);
+        // Use the global ocean chunk system if available, otherwise fallback to local calculation
+        let oceanHeight;
+        let surfaceNormal;
+        
+        if (window.oceanChunkSystem) {
+            oceanHeight = window.oceanChunkSystem.getOceanHeightAtPosition(this.position.x, this.position.z);
+            surfaceNormal = window.oceanChunkSystem.getOceanSurfaceNormal(this.position.x, this.position.z);
+        } else {
+            oceanHeight = calculateOceanHeight(this.position.x, this.position.z);
+            surfaceNormal = calculateOceanSurfaceNormal(this.position.x, this.position.z);
+        }
+        
         const shipFloatHeight = 0.75; // Adjusted so only 1/4 of hull is underwater
         
         // Ship follows the ocean surface directly - no extra bobbing
@@ -244,9 +255,6 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
         
         // Ship model follows ocean surface normal for realistic tilting
         if (this.shipModel) {
-            // Calculate ocean surface normal at ship position
-            const surfaceNormal = calculateOceanSurfaceNormal(this.position.x, this.position.z);
-            
             // Convert surface normal to rotation angles
             // Calculate pitch (rotation around X axis) from the Z component of normal
             const pitch = Math.asin(-surfaceNormal.z);

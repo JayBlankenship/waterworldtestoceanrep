@@ -5,48 +5,21 @@ import * as THREE from 'https://cdn.skypack.dev/three@0.134.0';
 import { createPlayerPawn } from './playerPawn.js';
 import { createShipPawn } from './shipPawn.js';
 import { SpectatorPawn } from './spectatorPawn.js'; // Import SpectatorPawn
-// --- GLOBAL OCEAN MESH ---
-let globalOcean = null;
-let globalOceanGeometry = null;
-let globalOceanSegments = 64;
+import { OceanChunkSystem } from './oceanChunkSystem.js'; // Import new ocean system
+
+// --- GLOBAL OCEAN SYSTEM ---
+let oceanChunkSystem = null; // New chunk-based ocean system
 let globalOceanStartTime = Date.now(); // Absolute timestamp when ocean simulation began
 let globalOceanTime = 0; // Current ocean time (calculated from start time)
 let globalOceanWaveState = {
     amp: 1.0, // Simple wave amplitude
     speed: 1.0 // Simple wave speed
 };
-let globalOceanSize = 120;
 
 // Make ocean variables globally accessible for ship synchronization
 window.globalOceanTime = globalOceanTime;
 window.globalOceanStartTime = globalOceanStartTime;
 window.globalOceanWaveState = globalOceanWaveState;
-
-function createGlobalOcean(scene, size = 120, segments = 64) {
-    // Create a large wireframe ocean mesh
-    size = 2400; // Large ocean size like before
-    segments = 256; // Much higher resolution for detailed wireframe
-    const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
-    geometry.rotateX(-Math.PI / 2);
-    
-    // Simple wireframe material - clean and minimal
-    const material = new THREE.MeshBasicMaterial({
-        color: 0x0066cc, // Simple blue color
-        wireframe: true, // Wireframe mesh representation
-        transparent: true,
-        opacity: 0.6
-    });
-    
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(0, 20.0, 0); // Position ocean surface
-    mesh.name = "globalOceanSurface";
-    scene.add(mesh);
-    // Removed ocean creation logging for performance
-    globalOcean = mesh;
-    globalOceanGeometry = geometry;
-    globalOceanSegments = segments;
-    globalOceanSize = size;
-}
 import { createAIPlayer } from './ai.js';
 import { TerrainPlane } from './terrainPlane.js';
 import { TerrainGenerator } from './terrainGenerator.js'; // Import the new class
@@ -119,7 +92,9 @@ function initGame() {
     scene.add(fillLight);
     
     // Add global animated ocean mesh (wireframe, ripple effect)
-    createGlobalOcean(scene, 120, 64);
+    oceanChunkSystem = new OceanChunkSystem(scene);
+    window.oceanChunkSystem = oceanChunkSystem; // Make globally accessible for ship physics
+    console.log('[Game] Initialized chunk-based ocean system');
     // Increase far plane to 5000 and near plane to 1.0 for large world and high ocean
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1.0, 5000);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -515,48 +490,19 @@ function initGame() {
             playerPawn.update(deltaTime, animationTime);
         }
 
-        // --- Animate global ocean mesh (simple wireframe waves) ---
-        if (globalOcean && globalOceanGeometry && playerPawn) {
+        // --- Update ocean chunk system ---
+        if (oceanChunkSystem && playerPawn) {
             // Calculate ocean time from absolute start time (deterministic and sync-friendly)
             const currentRealTime = Date.now();
             globalOceanTime = (currentRealTime - globalOceanStartTime) / 1000.0 * 2.0; // Convert to seconds and apply speed multiplier
-            
-            // Center ocean on player
-            globalOcean.position.x = playerPawn.position.x;
-            globalOcean.position.z = playerPawn.position.z;
-            globalOcean.position.y = 20.0;
             
             // Update window variables for ship synchronization
             window.globalOceanTime = globalOceanTime;
             window.globalOceanStartTime = globalOceanStartTime;
             window.globalOceanWaveState = globalOceanWaveState;
             
-            // Simple wave animation using deterministic time
-            const pos = globalOceanGeometry.attributes.position;
-            const seg = globalOceanSegments;
-            const t = globalOceanTime;
-            const px = playerPawn.position.x;
-            const pz = playerPawn.position.z;
-            const size = globalOceanSize;
-            
-            // Basic wave calculation - simple and fast
-            for (let xi = 0; xi <= seg; xi++) {
-                for (let zi = 0; zi <= seg; zi++) {
-                    const idx = xi * (seg + 1) + zi;
-                    const x = (xi - seg / 2) * (size / seg) + px;
-                    const z = (zi - seg / 2) * (size / seg) + pz;
-                    
-                    // Simple waves using deterministic time input
-                    let y = 0;
-                    y += Math.sin(0.08 * x + t * 0.6) * 1.0;
-                    y += Math.cos(0.07 * z + t * 0.4) * 0.8;
-                    y += Math.sin(0.06 * (x + z) + t * 0.2) * 0.5;
-                    
-                    pos.setY(idx, y);
-                }
-            }
-            
-            pos.needsUpdate = true;
+            // Update ocean chunk system around player position
+            oceanChunkSystem.update(deltaTime, playerPawn.position);
         }
         // === NETWORKING - Clean player state broadcasting ===
         
