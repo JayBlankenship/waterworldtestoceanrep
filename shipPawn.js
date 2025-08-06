@@ -90,7 +90,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
             
             // Configure and add the GLTF ship
             shipModel.scale.setScalar(1.0);
-            shipModel.position.y = -0.25; // Position ship so waterline is at proper level (1/4 hull underwater)
+            shipModel.position.y = -0.375; // Position ship so waterline is at proper level (3/8 hull underwater)
             
             // Apply color tint to ship materials
             shipModel.traverse((child) => {
@@ -124,7 +124,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
                 emissiveIntensity: 0.1
             });
             const simpleShip = new THREE.Mesh(simpleShipGeometry, simpleShipMaterial);
-            simpleShip.position.y = -0.25; // Match waterline position
+            simpleShip.position.y = -0.375; // Match waterline position
             playerGroup.add(simpleShip);
             playerGroup.shipModel = simpleShip;
             console.log('Gray fallback ship created for networked player');
@@ -142,7 +142,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
             
             // Configure and add the GLTF ship
             shipModel.scale.setScalar(1.0); // Adjust scale as needed
-            shipModel.position.y = -0.25; // Position ship so waterline is at proper level (1/4 hull underwater)
+            shipModel.position.y = -0.375; // Position ship so waterline is at proper level (3/8 hull underwater)
             
             // Apply color tint to ship materials
             shipModel.traverse((child) => {
@@ -184,7 +184,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
                 emissiveIntensity: 0.05
             });
             const shipMesh = new THREE.Mesh(shipGeometry, shipMaterial);
-            shipMesh.position.y = -0.25; // Match waterline position
+            shipMesh.position.y = -0.375; // Match waterline position
             playerGroup.add(shipMesh);
             
             // Add sailing ship details
@@ -217,7 +217,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
     let pitchAmplitude = 0.03 + Math.random() * 0.02;
 
     // Add properties for game mechanics
-    playerGroup.position.set(0, 20.75, 0); // Start at water level (ocean surface is at y=20) + proper waterline
+    playerGroup.position.set(0, 20.625, 0); // Start at water level (ocean surface is at y=20) + proper waterline
     playerGroup.velocity = new THREE.Vector3();
     playerGroup.maxSpeed = 8;
     playerGroup.acceleration = 0.15;
@@ -242,7 +242,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
             surfaceNormal = calculateOceanSurfaceNormal(this.position.x, this.position.z);
         }
         
-        const shipFloatHeight = 0.75; // Adjusted so only 1/4 of hull is underwater
+        const shipFloatHeight = 0.625; // Adjusted so 3/8 of hull is underwater
         
         // Ship follows the ocean surface directly - no extra bobbing
         this.position.y = oceanHeight + shipFloatHeight;
@@ -266,7 +266,7 @@ export function createShipPawn(isAI = false, color = null, showStar = false) {
             const dampingFactor = 0.1; // Adjust this to make rotation more or less responsive
             
             // Update ship model position and rotation
-            this.shipModel.position.y = -0.25; // Fixed waterline position
+            this.shipModel.position.y = -0.375; // Fixed waterline position
             this.shipModel.rotation.x += (pitch - this.shipModel.rotation.x) * dampingFactor;
             this.shipModel.rotation.z += (roll - this.shipModel.rotation.z) * dampingFactor;
         }

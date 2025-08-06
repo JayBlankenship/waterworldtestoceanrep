@@ -23,7 +23,7 @@ export class NetworkedPlayer {
                 
                 // Configure the ship to match local player exactly
                 shipModel.scale.setScalar(1.0);
-                shipModel.position.y = -0.25; // Match local player waterline position
+                shipModel.position.y = -0.375; // Match local player waterline position
                 
                 // Apply different colors based on role
                 this.applyShipStyling(shipModel, isHost);
@@ -141,7 +141,7 @@ export class NetworkedPlayer {
             emissiveIntensity: 0.2
         });
         const fallbackShip = new THREE.Mesh(fallbackGeometry, fallbackMaterial);
-        fallbackShip.position.y = -0.25; // Match local player waterline position
+        fallbackShip.position.y = -0.375; // Match local player waterline position
         this.pawn.add(fallbackShip);
         this.pawn.shipModel = fallbackShip;
         
@@ -197,7 +197,7 @@ export class NetworkedPlayer {
                 this.interpolation.targetShipModelPosition.copy(this.interpolation.shipModelPosition);
                 this.pawn.shipModel.position.copy(this.interpolation.shipModelPosition);
                 // Force correct waterline position regardless of network data
-                this.pawn.shipModel.position.y = -0.25;
+                this.pawn.shipModel.position.y = -0.375;
             }
             
             // Removed first update logging for performance
@@ -265,7 +265,7 @@ export class NetworkedPlayer {
                 
                 this.pawn.shipModel.position.copy(this.interpolation.shipModelPosition);
                 // Force correct waterline position regardless of network data
-                this.pawn.shipModel.position.y = -0.25;
+                this.pawn.shipModel.position.y = -0.375;
                 this.pawn.shipModel.rotation.copy(this.interpolation.shipModelRotation);
             }
         }
